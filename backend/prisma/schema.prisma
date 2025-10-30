@@ -1,0 +1,132 @@
+// Prisma schema for Organizacija dogodkov
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ORGANIZER
+  GUEST
+}
+
+enum InvitationStatus {
+  SENT
+  OPENED
+  RESPONDED
+  BOUNCED
+  MANUAL
+}
+
+model User {
+  id              String    @id @default(uuid())
+  role            UserRole
+  name            String
+  email           String   @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  events          Event[]  @relation("OrganizerEvents")
+  contacts        Contact[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  verificationTokens VerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model Event {
+  id            String       @id @default(uuid())
+  organizerId   String
+  organizer     User         @relation("OrganizerEvents", fields: [organizerId], references: [id], onDelete: Cascade)
+  name          String
+  date          DateTime
+  time          String
+  location      String
+  description   String
+  rsvpDeadline  DateTime?
+  invitations   Invitation[]
+  changelogs    ChangeLog[]
+  feedbacks     Feedback[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  @@index([organizerId])
+  @@index([date])
+}
+
+model Invitation {
+  id          String             @id @default(uuid())
+  eventId     String
+  event       Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  email       String
+  name        String?
+  status      InvitationStatus
+  token       String             @unique
+  sentAt      DateTime?
+  openedAt    DateTime?
+  respondedAt DateTime?
+  createdAt   DateTime           @default(now())
+  rsvp        RSVP?
+  @@index([eventId])
+  @@index([token])
+  @@index([status])
+}
+
+model RSVP {
+  id          String       @id @default(uuid())
+  invitation  Invitation   @relation(fields: [invitationId], references: [id], onDelete: Cascade)
+  invitationId String      @unique
+  attending   Boolean
+  companions  Int          @default(0)
+  dietary     String?
+  personalNote String?
+  createdAt   DateTime     @default(now())
+}
+
+model ChangeLog {
+  id        String   @id @default(uuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  field     String
+  oldValue  String?
+  newValue  String?
+  changedAt DateTime @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
+model Contact {
+  id           String   @id @default(uuid())
+  organizerId  String
+  organizer    User     @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  name         String
+  email        String
+  createdAt    DateTime @default(now())
+}
+
+model VerificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

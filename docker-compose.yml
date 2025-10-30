@@ -1,0 +1,66 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: organizacija_dogodkov
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - default
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - '8025:8025' # Web UI
+      - '1025:1025' # SMTP
+    networks:
+      - default
+
+  api:
+    build: ./backend
+    command: npm run dev
+    ports:
+      - '4000:4000'
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/organizacija_dogodkov
+      - JWT_SECRET=supersecret
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_USER=
+      - SMTP_PASS=
+      - FRONTEND_URL=http://localhost:5173
+      - BACKEND_URL=http://localhost:4000
+    depends_on:
+      - db
+      - mailhog
+    networks:
+      - default
+    volumes:
+      - ./backend:/app
+
+  web:
+    build: ./frontend
+    command: npm run dev -- --host
+    ports:
+      - '5173:5173'
+    environment:
+      - VITE_API_URL=http://localhost:4000
+    depends_on:
+      - api
+    networks:
+      - default
+    volumes:
+      - ./frontend:/app
+
+volumes:
+  db-data:
+
+networks:
+  default:
+    driver: bridge
