@@ -14,8 +14,18 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 app.use(cookieParser());
+// Support multiple frontend origins (comma-separated in FRONTEND_URL) and allow requests from the Vite dev server.
+const rawFrontends = process.env.FRONTEND_URL || 'http://localhost:3000';
+const allowedOrigins = rawFrontends.split(',').map(s => s.trim()).filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // allow requests with no origin (like curl, server-to-server)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // not allowed
+    return callback(new Error('CORS origin not allowed'), false);
+  },
   credentials: true
 }));
 

@@ -16,98 +16,92 @@ const EventCreateSchema = z.object({
 });
 
 /**
- * @openapi
- * /events:
- *   get:
- *     summary: List user's events
- *     responses:
- *       200:
- *         description: Event list
+ * GET /events - list events for authenticated organizer
  */
-router.get('/', (req, res) => {
-  res.json({ message: 'TODO: list events' });
+router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const events = await prisma.event.findMany({
+      where: { organizerId: req.user.uid },
+      orderBy: { date: 'desc' }
+    });
+    res.json(events);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch events' });
+  }
 });
 
 /**
- * @openapi
- * /events:
- *   post:
- *     summary: Create event
- *     responses:
- *       201:
- *         description: Event created
+ * POST /events - create new event
  */
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   if (!req.user || req.user.role !== 'ORGANIZER') return res.status(403).json({ error: 'Forbidden' });
   const parsed = EventCreateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid event data', details: parsed.error.issues });
   const { name, date, time, location, description, rsvpDeadline } = parsed.data;
-  const event = await prisma.event.create({
-    data: {
-      organizerId: req.user.uid,
-      name,
-      date: new Date(date),
-      time,
-      location,
-      description,
-      rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : null
-    }
-  });
-  res.status(201).json(event);
+  try {
+    const event = await prisma.event.create({
+      data: {
+        organizerId: req.user.uid,
+        name,
+        date: new Date(date),
+        time,
+        location,
+        description,
+        rsvpDeadline: rsvpDeadline ? new Date(rsvpDeadline) : null
+      }
+    });
+    res.status(201).json(event);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to create event' });
+  }
 });
 
 /**
- * @openapi
- * /events/{id}:
- *   get:
- *     summary: Get event details
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Event details
+ * GET /events/:id - event details (only organizer)
  */
-router.get('/:id', (req, res) => {
-  res.json({ message: 'TODO: event details' });
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const id = req.params.id;
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const event = await prisma.event.findUnique({ where: { id } });
+    if (!event) return res.status(404).json({ error: 'Not found' });
+    if (event.organizerId !== req.user.uid) return res.status(403).json({ error: 'Forbidden' });
+    res.json(event);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch event' });
+  }
 });
 
 /**
- * @openapi
- * /events/{id}:
- *   patch:
- *     summary: Edit event
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Event edited
+ * PATCH /events/:id - update event (TODO: partial update)
  */
-router.patch('/:id', (req, res) => {
-  res.json({ message: 'TODO: update event' });
+router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const id = req.params.id;
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  // For now, simple forbidden response to avoid accidental changes
+  res.status(501).json({ error: 'Not implemented' });
 });
 
 /**
- * @openapi
- * /events/{id}:
- *   delete:
- *     summary: Delete event
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       204:
- *         description: Deleted
+ * DELETE /events/:id - delete event
  */
-router.delete('/:id', (req, res) => {
-  res.status(204).send();
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+  const id = req.params.id;
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const event = await prisma.event.findUnique({ where: { id } });
+    if (!event) return res.status(404).json({ error: 'Not found' });
+    if (event.organizerId !== req.user.uid) return res.status(403).json({ error: 'Forbidden' });
+    await prisma.event.delete({ where: { id } });
+    res.status(204).send();
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete event' });
+  }
 });
 
 export default router;

@@ -107,7 +107,32 @@ router.post('/login', async (req, res) => {
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
-  return res.json({ id: user.id, email: user.email, name: user.name });
+  // Also return token and user in body to support SPA token storage when needed
+  return res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+});
+
+/**
+ * Get current user by Authorization header (Bearer token) or cookie token
+ */
+router.get('/me', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  let token = undefined as string | undefined;
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+    // decoded contains uid and email and role
+    const u: any = decoded;
+    const user = await prisma.user.findUnique({ where: { id: u.uid } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    return res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
 });
 
 /**

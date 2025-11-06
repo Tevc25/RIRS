@@ -34,7 +34,7 @@ services:
       - SMTP_PORT=1025
       - SMTP_USER=
       - SMTP_PASS=
-      - FRONTEND_URL=http://localhost:5173
+      - FRONTEND_URL=http://localhost:3000
       - BACKEND_URL=http://localhost:4000
     depends_on:
       - db
@@ -48,9 +48,9 @@ services:
     build: ./frontend
     command: npm run dev -- --host
     ports:
-      - '5173:5173'
+      - '3000:3000'
     environment:
-      - VITE_API_URL=http://localhost:4000
+      - VITE_BACKEND_URL=http://localhost:4000
     depends_on:
       - api
     networks:
