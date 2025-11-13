@@ -5,10 +5,11 @@ import { toast } from 'react-hot-toast';
 
 interface AuthPageProps {
   // on successful login, pass user object and token
-  onLogin: (user: { id: number; email: string; role?: string }, token: string) => void;
+  onLogin: (user: { id: string; email: string; role?: string; name?: string }, token: string) => void;
+  onGoToRegister: () => void;
 }
 
-const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
+const AuthPage: React.FC<AuthPageProps> = ({ onLogin, onGoToRegister }) => {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
@@ -30,7 +31,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
         return;
       }
       const body = await res.json();
-      const { token, user } = body as { token: string; user: { id: number; email: string; role?: string } };
+      const { token, user } = body as { token: string; user: { id: string; email: string; role?: string; name?: string } };
       if (!token || !user) {
         toast.error('Invalid login response from server');
         return;
@@ -127,6 +128,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
               </button>
             </div>
           </form>
+          <p className="mt-6 text-center text-sm text-gray-600">
+            Need an organizer account?{' '}
+            <button 
+                type="button" 
+                onClick={onGoToRegister} 
+                className="font-bold text-primary-600 hover:text-primary-800 transition-colors duration-300"
+            >
+                Create one here
+            </button>
+          </p>
         </div>
       </div>
     </div>

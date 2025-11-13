@@ -10,7 +10,7 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const token = req.cookies.token;
+  const token = extractToken(req);
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -21,4 +21,15 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
   } catch {
     return res.status(401).json({ error: 'Invalid auth token' });
   }
+}
+
+function extractToken(req: Request) {
+  if (req.cookies && typeof req.cookies.token === 'string') {
+    return req.cookies.token;
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  return null;
 }

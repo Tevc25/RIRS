@@ -8,6 +8,7 @@ export type View =
   | 'REGISTER_FORM'
   | 'REGISTRATION_SUCCESS'
   | 'FEEDBACK_FORM'
+  | 'REGISTER_USER'
   // FIX: Add missing view types for guest navigation.
   | 'GUEST_EVENTS_OVERVIEW'
   | 'GUEST_EVENT_DISCOVERY';

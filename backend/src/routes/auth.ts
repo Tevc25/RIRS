@@ -7,6 +7,11 @@ import jwt from 'jsonwebtoken';
 const prisma = new PrismaClient();
 const router = Router();
 
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+if (JWT_SECRET === 'dev-secret-change-me' && process.env.NODE_ENV !== 'production') {
+  console.warn('[auth] Using fallback JWT secret. Set JWT_SECRET in your environment for security.');
+}
+
 const UserRole = {
   ORGANIZER: 'ORGANIZER',
   GUEST: 'GUEST'
@@ -97,7 +102,7 @@ router.post('/login', async (req, res) => {
   // JWT sign
   const token = jwt.sign(
     { uid: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET!,
+    JWT_SECRET,
     { expiresIn: '7d' }
   );
   // Set as http-only cookie
@@ -124,7 +129,7 @@ router.get('/me', async (req, res) => {
   }
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+  const decoded = jwt.verify(token, JWT_SECRET);
     // decoded contains uid and email and role
     const u: any = decoded;
     const user = await prisma.user.findUnique({ where: { id: u.uid } });

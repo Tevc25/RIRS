@@ -37,20 +37,24 @@ model User {
 }
 
 model Event {
-  id            String       @id @default(uuid())
-  organizerId   String
-  organizer     User         @relation("OrganizerEvents", fields: [organizerId], references: [id], onDelete: Cascade)
-  name          String
-  date          DateTime
-  time          String
-  location      String
-  description   String
-  rsvpDeadline  DateTime?
-  invitations   Invitation[]
-  changelogs    ChangeLog[]
-  feedbacks     Feedback[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id                   String       @id @default(uuid())
+  organizerId          String
+  organizer            User         @relation("OrganizerEvents", fields: [organizerId], references: [id], onDelete: Cascade)
+  name                 String
+  date                 DateTime
+  time                 String
+  location             String
+  description          String
+  registrationDeadline DateTime?
+  maxCapacity          Int          @default(0)
+  isPrivate            Boolean      @default(false)
+  image                String?
+  category             String?
+  invitations          Invitation[]
+  changelogs           ChangeLog[]
+  feedbacks            Feedback[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
   @@index([organizerId])
   @@index([date])
 }

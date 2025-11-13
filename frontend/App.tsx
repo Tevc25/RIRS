@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import apiFetch from './src/utils/api';
 import { Toaster, toast } from 'react-hot-toast';
 import type { View, Event, Guest, Contact } from './types';
-import { MOCK_EVENTS, MOCK_GUESTS, MOCK_CONTACTS, CURRENT_USER_ID } from './constants';
+import { MOCK_GUESTS, MOCK_CONTACTS } from './constants';
 
 import Dashboard from './components/pages/Dashboard';
 import RegistrationSuccessPage from './components/pages/RegistrationSuccessPage';
@@ -12,13 +12,29 @@ import RegistrationForm from './components/pages/RegistrationForm';
 import FeedbackForm from './components/pages/FeedbackForm';
 import AuthPage from './components/pages/AuthPage';
 import EventDetailsPage from './components/pages/EventDetailsPage';
+import RegisterAccountPage from './components/pages/RegisterAccountPage';
 
-type User = { id: number; email: string; role?: string } | null;
+type User = { id: string; email: string; role?: string; name?: string } | null;
+type EventInput = Omit<Event, 'id' | 'creatorId'> | Event;
+const EVENT_IMAGE_FALLBACK = 'https://picsum.photos/seed/event/1200/800';
+
+const buildEventRequestPayload = (eventData: EventInput) => ({
+    name: eventData.name,
+    date: eventData.date,
+    time: eventData.time,
+    location: eventData.location,
+    description: eventData.description,
+    registrationDeadline: eventData.registrationDeadline ? eventData.registrationDeadline : null,
+    maxCapacity: Number(eventData.maxCapacity ?? 0),
+    isPrivate: Boolean(eventData.isPrivate),
+    image: eventData.image && eventData.image.length > 0 ? eventData.image : EVENT_IMAGE_FALLBACK,
+    category: eventData.category || 'Technology',
+});
 
 const App: React.FC = () => {
     const [view, setView] = useState<View>('AUTH');
     const [previousView, setPreviousView] = useState<View | null>(null);
-    const [events, setEvents] = useState<Event[]>(MOCK_EVENTS);
+    const [events, setEvents] = useState<Event[]>([]);
     const [guests, setGuests] = useState<Guest[]>(MOCK_GUESTS);
     const [contacts, setContacts] = useState<Contact[]>(MOCK_CONTACTS);
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -49,6 +65,32 @@ const App: React.FC = () => {
         }
     }, []);
 
+    const fetchEvents = useCallback(async () => {
+        try {
+            const res = await apiFetch('/api/events');
+            if (!res.ok) {
+                throw new Error('Failed to load events');
+            }
+            const body = await res.json();
+            if (Array.isArray(body)) {
+                setEvents(body);
+            } else {
+                setEvents([]);
+            }
+        } catch (err) {
+            console.error('Failed to fetch events', err);
+            toast.error('Failed to load events. Please try again.');
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isLoggedIn) {
+            fetchEvents();
+        } else {
+            setEvents([]);
+        }
+    }, [isLoggedIn, fetchEvents]);
+
     const handleNavigation = (newView: View, keepHistory: boolean = true) => {
         if (keepHistory) {
             setPreviousView(view);
@@ -66,7 +108,7 @@ const App: React.FC = () => {
         }
     }
 
-    const handleLogin = (user: { id: number; email: string; role?: string }, token: string) => {
+    const handleLogin = (user: { id: string; email: string; role?: string; name?: string }, token: string) => {
         setCurrentUser(user);
         setIsLoggedIn(true);
         try {
@@ -84,6 +126,7 @@ const App: React.FC = () => {
     const handleLogout = () => {
         setIsLoggedIn(false);
         setCurrentUser(null);
+        setEvents([]);
         handleNavigation('AUTH', false);
         setSelectedEventId(null);
         setPreviousView(null);
@@ -93,18 +136,46 @@ const App: React.FC = () => {
         } catch (err) {}
     };
 
-    const createEvent = (event: Omit<Event, 'id' | 'creatorId'>) => {
-        const creator = currentUser ? String(currentUser.id) : CURRENT_USER_ID;
-        const newEvent: Event = { ...event, id: `evt-${Date.now()}`, creatorId: creator };
-        setEvents(prev => [newEvent, ...prev]);
-        toast.success('Event created successfully!');
-        handleNavigation('DASHBOARD', false);
+    const createEvent = async (event: Omit<Event, 'id' | 'creatorId'>) => {
+        try {
+            const res = await apiFetch('/api/events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(buildEventRequestPayload(event))
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok || !body) {
+                throw new Error((body as any)?.error || 'Failed to create event');
+            }
+            const created: Event = body;
+            setEvents(prev => [created, ...prev.filter(e => e.id !== created.id)]);
+            toast.success('Event created successfully!');
+            handleNavigation('DASHBOARD', false);
+        } catch (err) {
+            console.error('Failed to create event', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to create event');
+        }
     };
 
-    const updateEvent = (updatedEvent: Event) => {
-        setEvents(prev => prev.map(e => e.id === updatedEvent.id ? updatedEvent : e));
-        toast.success('Event updated successfully!');
-        handleNavigation('DASHBOARD', false);
+    const updateEvent = async (updatedEvent: Event) => {
+        try {
+            const res = await apiFetch(`/api/events/${updatedEvent.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(buildEventRequestPayload(updatedEvent))
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok || !body) {
+                throw new Error((body as any)?.error || 'Failed to update event');
+            }
+            const saved: Event = body;
+            setEvents(prev => prev.map(e => e.id === saved.id ? saved : e));
+            toast.success('Event updated successfully!');
+            handleNavigation('DASHBOARD', false);
+        } catch (err) {
+            console.error('Failed to update event', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to update event');
+        }
     };
     
     const addContact = (contact: Omit<Contact, 'id'>) => {
@@ -127,14 +198,20 @@ const App: React.FC = () => {
 
     const renderContent = () => {
         if (!isLoggedIn) {
-            return <AuthPage onLogin={handleLogin} />;
+            if (view === 'REGISTER_USER') {
+                return <RegisterAccountPage 
+                            onBackToLogin={() => handleNavigation('AUTH', false)}
+                            onRegistered={() => handleNavigation('AUTH', false)}
+                        />;
+            }
+            return <AuthPage onLogin={handleLogin} onGoToRegister={() => handleNavigation('REGISTER_USER')} />;
         }
 
         switch (view) {
             case 'DASHBOARD':
                 return <Dashboard 
                             events={events}
-                            userId={currentUser ? String(currentUser.id) : CURRENT_USER_ID}
+                            userId={currentUser ? String(currentUser.id) : ''}
                             onNavigate={handleNavigation}
                             onSelectEvent={setSelectedEventId}
                             onLogout={handleLogout}
@@ -193,11 +270,16 @@ const App: React.FC = () => {
                             }}
                         /> : <p>Event not found</p>;
             case 'AUTH':
-                 return <AuthPage onLogin={handleLogin} />;
+                 return <AuthPage onLogin={handleLogin} onGoToRegister={() => handleNavigation('REGISTER_USER')} />;
+            case 'REGISTER_USER':
+                return <RegisterAccountPage 
+                            onBackToLogin={() => handleNavigation('AUTH', false)}
+                            onRegistered={() => handleNavigation('AUTH', false)}
+                        />;
             default:
                 return <Dashboard 
                             events={events}
-                            userId={currentUser ? String(currentUser.id) : CURRENT_USER_ID}
+                            userId={currentUser ? String(currentUser.id) : ''}
                             onNavigate={handleNavigation}
                             onSelectEvent={setSelectedEventId}
                             onLogout={handleLogout}
