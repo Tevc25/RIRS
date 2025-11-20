@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import apiFetch from './src/utils/api';
+import apiFetch, { submitFeedback as submitFeedbackApi, fetchRsvpInvite, submitRsvp } from './src/utils/api';
 import { Toaster, toast } from 'react-hot-toast';
-import type { View, Event, Guest, Contact } from './types';
+import type { View, Event, Guest, Contact, Invitation } from './types';
 import { MOCK_GUESTS, MOCK_CONTACTS } from './constants';
 
 import Dashboard from './components/pages/Dashboard';
@@ -10,6 +10,7 @@ import CreateEditEventForm from './components/pages/CreateEditEventForm';
 import EventManagementPage from './components/pages/EventManagementPage';
 import RegistrationForm from './components/pages/RegistrationForm';
 import FeedbackForm from './components/pages/FeedbackForm';
+import RsvpPage from './components/pages/RsvpPage';
 import AuthPage from './components/pages/AuthPage';
 import EventDetailsPage from './components/pages/EventDetailsPage';
 import RegisterAccountPage from './components/pages/RegisterAccountPage';
@@ -40,6 +41,9 @@ const App: React.FC = () => {
     const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
     const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
     const [currentUser, setCurrentUser] = useState<User>(null);
+    const [rsvpInvite, setRsvpInvite] = useState<{ invitation: Invitation; event: Event } | null>(null);
+    const [rsvpSubmitting, setRsvpSubmitting] = useState(false);
+    const [rsvpError, setRsvpError] = useState<string | null>(null);
 
     useEffect(() => {
         // restore session from storage if token present
@@ -62,6 +66,23 @@ const App: React.FC = () => {
                     console.error('Session restore failed', err);
                 }
             })();
+        }
+        // Direct RSVP link handler
+        if (window && window.location && window.location.pathname.startsWith('/rsvp/')) {
+            const token = window.location.pathname.replace('/rsvp/', '');
+            if (token) {
+                (async () => {
+                    try {
+                        const data = await fetchRsvpInvite(token);
+                        setRsvpInvite({ invitation: data.invitation, event: data.event });
+                        setSelectedEventId(data.event.id);
+                        setView('RSVP_INVITE');
+                    } catch (err) {
+                        console.error('Failed to load RSVP invite', err);
+                        toast.error(err instanceof Error ? err.message : 'RSVP not found');
+                    }
+                })();
+            }
         }
     }, []);
 
@@ -177,6 +198,17 @@ const App: React.FC = () => {
             toast.error(err instanceof Error ? err.message : 'Failed to update event');
         }
     };
+
+    const submitFeedback = async (eventId: string, rating: number, comment: string) => {
+        try {
+            await submitFeedbackApi(eventId, rating, comment);
+            toast.success('Thank you for your feedback!');
+            handleNavigation('DASHBOARD', false);
+        } catch (err) {
+            console.error('Failed to submit feedback', err);
+            toast.error(err instanceof Error ? err.message : 'Failed to submit feedback');
+        }
+    };
     
     const addContact = (contact: Omit<Contact, 'id'>) => {
         const newContact: Contact = { ...contact, id: `ct-${Date.now()}` };
@@ -197,7 +229,7 @@ const App: React.FC = () => {
     const selectedEvent = useMemo(() => events.find(e => e.id === selectedEventId), [events, selectedEventId]);
 
     const renderContent = () => {
-        if (!isLoggedIn) {
+        if (!isLoggedIn && view !== 'RSVP_INVITE') {
             if (view === 'REGISTER_USER') {
                 return <RegisterAccountPage 
                             onBackToLogin={() => handleNavigation('AUTH', false)}
@@ -264,10 +296,7 @@ const App: React.FC = () => {
             case 'FEEDBACK_FORM':
                 return selectedEvent ? <FeedbackForm
                             event={selectedEvent}
-                            onSubmit={() => {
-                                toast.success('Thank you for your feedback!');
-                                handleNavigation('DASHBOARD', false);
-                            }}
+                            onSubmit={(rating, comment) => submitFeedback(selectedEvent.id, rating, comment)}
                         /> : <p>Event not found</p>;
             case 'AUTH':
                  return <AuthPage onLogin={handleLogin} onGoToRegister={() => handleNavigation('REGISTER_USER')} />;
@@ -276,6 +305,31 @@ const App: React.FC = () => {
                             onBackToLogin={() => handleNavigation('AUTH', false)}
                             onRegistered={() => handleNavigation('AUTH', false)}
                         />;
+            case 'RSVP_INVITE':
+                return rsvpInvite ? (
+                    <RsvpPage
+                        event={rsvpInvite.event}
+                        invitation={rsvpInvite.invitation}
+                        submitting={rsvpSubmitting}
+                        error={rsvpError ?? undefined}
+                        onSubmit={async ({ attending, companions, dietary, personalNote }) => {
+                            setRsvpSubmitting(true);
+                            setRsvpError(null);
+                            try {
+                                await submitRsvp(rsvpInvite.invitation.token, { attending, companions, dietary, personalNote });
+                                toast.success('RSVP saved. Thank you!');
+                                setRsvpInvite(null);
+                                handleNavigation(isLoggedIn ? 'DASHBOARD' : 'AUTH', false);
+                            } catch (err) {
+                                const message = err instanceof Error ? err.message : 'Failed to submit RSVP';
+                                setRsvpError(message);
+                                toast.error(message);
+                            } finally {
+                                setRsvpSubmitting(false);
+                            }
+                        }}
+                    />
+                ) : <p>Invitation not found</p>;
             default:
                 return <Dashboard 
                             events={events}

@@ -1,17 +1,24 @@
 import React from 'react';
 import type { Event } from '../../types';
 import { Star, MessageCircle } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 interface FeedbackFormProps {
   event: Event;
-  onSubmit: () => void;
+  onSubmit: (rating: number, comment: string) => Promise<void> | void;
 }
 
 const FeedbackForm: React.FC<FeedbackFormProps> = ({ event, onSubmit }) => {
+    const [rating, setRating] = React.useState(0);
+    const [comment, setComment] = React.useState('');
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        onSubmit();
+        if (rating <= 0) {
+            toast.error('Please rate your experience.');
+            return;
+        }
+        await onSubmit(rating, comment);
     }
 
     return (
@@ -25,7 +32,7 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ event, onSubmit }) => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
                             <h3 className="font-semibold text-gray-800 mb-2">Overall Experience</h3>
-                            <RatingGroup name="overall"/>
+                            <RatingGroup name="overall" value={rating} onChange={setRating}/>
                         </div>
                         <div>
                             <h3 className="font-semibold text-gray-800 mb-2">Venue & Atmosphere</h3>
@@ -45,7 +52,14 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ event, onSubmit }) => {
                         <label htmlFor="comment" className="block text-md font-semibold text-gray-800 mb-2">Personal Comment / Suggestion</label>
                         <div className="relative">
                            <MessageCircle className="absolute left-3 top-3 w-5 h-5 text-primary-300"/>
-                           <textarea id="comment" rows={4} className="w-full pl-10 pr-4 py-2 border-transparent rounded-md bg-primary-600 text-white placeholder-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-400 transition" placeholder="What did you like? What could be improved?"></textarea>
+                           <textarea
+                             id="comment"
+                             rows={4}
+                             value={comment}
+                             onChange={(e) => setComment(e.target.value)}
+                             className="w-full pl-10 pr-4 py-2 border-transparent rounded-md bg-primary-600 text-white placeholder-primary-300 focus:outline-none focus:ring-2 focus:ring-primary-400 transition"
+                             placeholder="What did you like? What could be improved?"
+                           />
                         </div>
                     </div>
 
@@ -58,14 +72,13 @@ const FeedbackForm: React.FC<FeedbackFormProps> = ({ event, onSubmit }) => {
     );
 };
 
-const RatingGroup: React.FC<{name: string}> = ({name}) => {
-    const [rating, setRating] = React.useState(0);
+const RatingGroup: React.FC<{name: string, value: number, onChange: (value: number) => void}> = ({name, value, onChange}) => {
     return (
         <div className="flex space-x-1">
         {[1,2,3,4,5].map(star => (
             <label key={star}>
-                <input type="radio" name={name} value={star} className="sr-only" onClick={() => setRating(star)} />
-                <Star className={`w-8 h-8 cursor-pointer transition-colors ${star <= rating ? 'text-yellow-400' : 'text-gray-300'}`} />
+                <input type="radio" name={name} value={star} className="sr-only" onClick={() => onChange(star)} />
+                <Star className={`w-8 h-8 cursor-pointer transition-colors ${star <= value ? 'text-yellow-400' : 'text-gray-300'}`} />
             </label>
         ))}
         </div>

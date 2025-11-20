@@ -11,7 +11,10 @@ export type View =
   | 'REGISTER_USER'
   // FIX: Add missing view types for guest navigation.
   | 'GUEST_EVENTS_OVERVIEW'
-  | 'GUEST_EVENT_DISCOVERY';
+  | 'GUEST_EVENT_DISCOVERY'
+  | 'RSVP_INVITE';
+
+export type InvitationStatus = 'SENT' | 'OPENED' | 'RESPONDED' | 'BOUNCED' | 'MANUAL';
 
 export interface Event {
   id: string;
@@ -45,6 +48,25 @@ export interface Contact {
   id: string;
   name: string;
   email: string;
+}
+
+export interface Invitation {
+  id: string;
+  eventId: string;
+  email: string;
+  name?: string | null;
+  status: InvitationStatus;
+  token: string;
+  sentAt?: string | null;
+  openedAt?: string | null;
+  respondedAt?: string | null;
+  createdAt?: string;
+  rsvp?: {
+    attending: boolean;
+    companions: number;
+    dietary?: string | null;
+    personalNote?: string | null;
+  } | null;
 }
 
 export interface EventManagementPageProps {

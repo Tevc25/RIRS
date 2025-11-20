@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import type { Event, Guest, Contact, View, GuestStatus, EventManagementPageProps } from '../../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { Event, Guest, Contact, GuestStatus, EventManagementPageProps, Invitation, InvitationStatus } from '../../types';
 import { toast } from 'react-hot-toast';
-import { List, Mail, BarChart3, Settings, ChevronLeft, LogOut, Trash2, Edit2, Send, Plus, Search, CheckCircle, Clock, XCircle, UserPlus, Download, Bell, User, Users, ChevronDown } from 'lucide-react';
+import { List, Mail, BarChart3, Settings, ChevronLeft, LogOut, Trash2, Edit2, Send, Plus, Search, CheckCircle, Clock, XCircle, UserPlus, Download, Bell, User, Users, ChevronDown, Loader2 } from 'lucide-react';
+import { createInvitations, fetchInvitations, sendReminder, fetchEventReport } from '../../src/utils/api';
 
 
 const ContactFormModal: React.FC<{
@@ -59,59 +60,32 @@ const ContactFormModal: React.FC<{
 };
 
 
-const GuestListTab: React.FC<{ guests: Guest[], onSendReminders: () => void }> = ({ guests, onSendReminders }) => {
-    const [statusFilter, setStatusFilter] = useState<GuestStatus | 'All'>('All');
-    
-    const statusIconMap: Record<GuestStatus, React.ReactNode> = {
-        'Confirmed': <CheckCircle className="w-5 h-5 text-green-500" />,
-        'Pending': <Clock className="w-5 h-5 text-yellow-500" />,
-        'Declined': <XCircle className="w-5 h-5 text-red-500" />,
-        'Manually Added': <UserPlus className="w-5 h-5 text-blue-500" />
-    };
-    
-    const filteredGuests = statusFilter === 'All' ? guests : guests.filter(g => g.status === statusFilter);
+const GuestListTab: React.FC<{ invitations: Invitation[] | undefined, onSendReminders: () => void, isSendingReminders: boolean }> = ({ invitations = [], onSendReminders, isSendingReminders }) => {
+    const [statusFilter, setStatusFilter] = useState<InvitationStatus | 'All'>('All');
 
-    const InputField: React.FC<{id: string, label: string, type?: string, icon: React.ReactNode, placeholder?: string}> = 
-      ({id, label, type = "text", icon, placeholder}) => (
-        <div>
-            <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-            <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">{icon}</span>
-                <input
-                    type={type}
-                    id={id}
-                    placeholder={placeholder}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition"
-                />
-            </div>
-        </div>
-    );
+    const list = invitations ?? [];
+    const filtered = statusFilter === 'All' ? list : list.filter(inv => inv.status === statusFilter);
+    const totalGuests = list.reduce((sum, inv) => {
+      if (inv.rsvp?.attending) {
+        return sum + 1 + (inv.rsvp.companions || 0);
+      }
+      return sum;
+    }, 0);
+
+    const summary = {
+      totalInvites: list.length,
+      responded: list.filter(inv => inv.status === 'RESPONDED').length,
+      pending: list.filter(inv => inv.status === 'SENT' || inv.status === 'OPENED').length,
+      bounced: list.filter(inv => inv.status === 'BOUNCED').length,
+    };
 
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold">{guests.length}</p><p className="text-sm text-gray-500">Total Guests</p></div>
-                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold text-green-600">{guests.filter(g=>g.status==='Confirmed').length}</p><p className="text-sm text-gray-500">Confirmed</p></div>
-                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold text-yellow-600">{guests.filter(g=>g.status==='Pending').length}</p><p className="text-sm text-gray-500">Pending</p></div>
-                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold text-red-600">{guests.filter(g=>g.status==='Declined').length}</p><p className="text-sm text-gray-500">Declined</p></div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow">
-                 <h3 className="text-lg font-semibold mb-4">Add New Guest</h3>
-                 <form className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                    <div className="md:col-span-1">
-                      <InputField id="guest-name" label="Name" icon={<User className="w-5 h-5"/>} placeholder="John Doe"/>
-                    </div>
-                     <div className="md:col-span-1">
-                       <InputField id="guest-email" label="Email" type="email" icon={<Mail className="w-5 h-5"/>} placeholder="john.doe@email.com"/>
-                    </div>
-                     <div className="md:col-span-1">
-                        <InputField id="guest-party-size" label="Party Size" type="number" icon={<Users className="w-5 h-5"/>} placeholder="1"/>
-                    </div>
-                     <div className="md:col-span-1">
-                        <button type="submit" className="w-full bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 flex items-center justify-center"><Plus className="w-4 h-4 mr-2"/>Add Guest</button>
-                     </div>
-                 </form>
+                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold">{summary.totalInvites}</p><p className="text-sm text-gray-500">Invitations</p></div>
+                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold text-green-600">{summary.responded}</p><p className="text-sm text-gray-500">Responded</p></div>
+                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold text-yellow-600">{summary.pending}</p><p className="text-sm text-gray-500">Pending</p></div>
+                <div className="bg-white p-4 rounded-lg shadow"><p className="text-2xl font-bold text-blue-600">{totalGuests}</p><p className="text-sm text-gray-500">Expected Guests</p></div>
             </div>
             
             <div className="bg-white p-6 rounded-lg shadow">
@@ -119,20 +93,24 @@ const GuestListTab: React.FC<{ guests: Guest[], onSendReminders: () => void }> =
                      <h3 className="text-lg font-semibold">Guest List</h3>
                      <div className="flex items-center gap-4">
                         <div className="relative">
-                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                           <input type="text" placeholder="Search guests..." className="pl-9 w-full border border-gray-300 rounded-md shadow-sm text-sm bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition py-1.5"/>
-                        </div>
-                        <div className="relative">
-                            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as GuestStatus | 'All')} className="appearance-none w-full border border-gray-300 rounded-md shadow-sm text-sm bg-white text-gray-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition px-3 py-1.5">
+                            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as InvitationStatus | 'All')} className="appearance-none w-full border border-gray-300 rounded-md shadow-sm text-sm bg-white text-gray-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500 transition px-3 py-1.5">
                                 <option value="All">All Statuses</option>
-                                <option value="Confirmed">Confirmed</option>
-                                <option value="Pending">Pending</option>
-                                <option value="Declined">Declined</option>
-                                <option value="Manually Added">Manually Added</option>
+                                <option value="RESPONDED">Responded</option>
+                                <option value="SENT">Sent</option>
+                                <option value="OPENED">Opened</option>
+                                <option value="BOUNCED">Bounced</option>
+                                <option value="MANUAL">Manual</option>
                             </select>
                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                         </div>
-                        <button onClick={onSendReminders} className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-md hover:bg-blue-200 flex items-center text-sm font-medium"><Bell className="w-4 h-4 mr-2"/>Send Reminders</button>
+                        <button
+                          onClick={onSendReminders}
+                          disabled={isSendingReminders}
+                          className={`bg-blue-100 text-blue-700 px-3 py-1.5 rounded-md flex items-center text-sm font-medium ${isSendingReminders ? 'opacity-70 cursor-not-allowed' : 'hover:bg-blue-200'}`}
+                        >
+                          {isSendingReminders ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Bell className="w-4 h-4 mr-2"/>}
+                          {isSendingReminders ? 'Sending...' : 'Send Reminders'}
+                        </button>
                      </div>
                  </div>
                  <div className="overflow-x-auto">
@@ -141,17 +119,21 @@ const GuestListTab: React.FC<{ guests: Guest[], onSendReminders: () => void }> =
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Followers</th>
-                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attending</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Companions</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Responded At</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredGuests.map(guest => (
-                          <tr key={guest.id}>
-                            <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-medium text-gray-900">{guest.name}</div><div className="text-sm text-gray-500">{guest.email}</div></td>
-                            <td className="px-6 py-4 whitespace-nowrap"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${guest.status === 'Confirmed' ? 'green' : guest.status === 'Pending' ? 'yellow' : 'red'}-100 text-${guest.status === 'Confirmed' ? 'green' : guest.status === 'Pending' ? 'yellow' : 'red'}-800`}>{guest.status}</span></td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{guest.followers}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2"><button className="text-primary-600 hover:text-primary-900"><Edit2 className="w-4 h-4"/></button><button className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4"/></button></td>
+                        {filtered.map(inv => (
+                          <tr key={inv.id}>
+                            <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-medium text-gray-900">{inv.name || 'Guest'}</div><div className="text-sm text-gray-500">{inv.email}</div></td>
+                            <td className="px-6 py-4 whitespace-nowrap"><span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 capitalize">{inv.status.toLowerCase()}</span></td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                              {inv.rsvp ? (inv.rsvp.attending ? <span className="text-green-600 font-semibold">Yes</span> : <span className="text-red-500 font-semibold">No</span>) : '—'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{inv.rsvp?.companions ?? 0}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{inv.respondedAt ? new Date(inv.respondedAt).toLocaleString() : '—'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -165,11 +147,14 @@ const GuestListTab: React.FC<{ guests: Guest[], onSendReminders: () => void }> =
 
 const InvitationsTab: React.FC<{ 
     contacts: Contact[], 
-    onSendInvitations: () => void,
+    invitations: Invitation[],
+    onSendInvitations: (selectedContactIds: string[]) => void | Promise<void>,
     onOpenModal: (contact: Contact | null) => void,
-    onDeleteContact: (contactId: string) => void
-}> = ({ contacts, onSendInvitations, onOpenModal, onDeleteContact }) => {
+    onDeleteContact: (contactId: string) => void,
+    isSendingInvitations: boolean
+}> = ({ contacts, invitations, onSendInvitations, onOpenModal, onDeleteContact, isSendingInvitations }) => {
     const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const toggleContact = (contactId: string) => {
         setSelectedContacts(prev => prev.includes(contactId) ? prev.filter(id => id !== contactId) : [...prev, contactId]);
@@ -219,21 +204,86 @@ const InvitationsTab: React.FC<{
                     <input type="text" readOnly value="https://eventhost.com/register/your-event-id" className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-500 cursor-not-allowed"/>
                     <div className="flex justify-end space-x-3">
                          <button className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-200 text-sm font-medium">Preview</button>
-                         <button onClick={onSendInvitations} className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700 flex items-center justify-center text-sm font-medium"><Send className="w-4 h-4 mr-2"/>Send Invitations</button>
+                         <button
+                           onClick={() => onSendInvitations(selectedContacts)}
+                           disabled={isSendingInvitations || selectedContacts.length === 0}
+                           className={`bg-primary-600 text-white px-4 py-2 rounded-md flex items-center justify-center text-sm font-medium ${isSendingInvitations || selectedContacts.length === 0 ? 'opacity-70 cursor-not-allowed' : 'hover:bg-primary-700'}`}
+                         >
+                           {isSendingInvitations ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Send className="w-4 h-4 mr-2"/>}
+                           {isSendingInvitations ? 'Sending...' : 'Send Invitations'}
+                         </button>
                     </div>
+                </div>
+                <div className="mt-6">
+                  <h4 className="text-md font-semibold mb-2">Sent Invitations</h4>
+                  {invitations.length === 0 ? (
+                    <p className="text-sm text-gray-500">No invitations sent yet.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Recipient</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Status</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">RSVP Link</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {invitations.map(inv => {
+                            const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                            const link = `${origin}/rsvp/${inv.token}`;
+                            return (
+                              <tr key={inv.id}>
+                                <td className="px-4 py-2">
+                                  <div className="font-medium text-gray-800">{inv.name || 'Guest'}</div>
+                                  <div className="text-gray-500">{inv.email}</div>
+                                </td>
+                                <td className="px-4 py-2">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 capitalize">{inv.status.toLowerCase()}</span>
+                                </td>
+                                <td className="px-4 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <input value={link} readOnly className="w-full border rounded px-2 py-1 text-xs text-gray-700" />
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(link).then(() => {
+                                          setCopiedId(inv.id);
+                                          setTimeout(() => setCopiedId(null), 1500);
+                                        });
+                                      }}
+                                      className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200"
+                                    >
+                                      {copiedId === inv.id ? 'Copied' : 'Copy'}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
             </div>
         </div>
     );
 };
 
-const ReportsTab: React.FC = () => {
+const ReportsTab: React.FC<{ onDownloadReport: () => void, isDownloading: boolean }> = ({ onDownloadReport, isDownloading }) => {
     return (
         <div className="bg-white p-6 rounded-lg shadow">
             <h3 className="text-lg font-semibold mb-4">Event Performance</h3>
              <div className="flex justify-between items-center mb-4">
                  <p className="text-sm text-gray-600">Comprehensive insights into your event's reach and engagement.</p>
-                 <button className="bg-primary-600 text-white px-3 py-1.5 rounded-md hover:bg-primary-700 flex items-center text-sm font-medium"><Download className="w-4 h-4 mr-2"/>Download Report</button>
+                 <button
+                   onClick={onDownloadReport}
+                   disabled={isDownloading}
+                   className={`bg-primary-600 text-white px-3 py-1.5 rounded-md flex items-center text-sm font-medium ${isDownloading ? 'opacity-70 cursor-not-allowed' : 'hover:bg-primary-700'}`}
+                 >
+                   {isDownloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <Download className="w-4 h-4 mr-2"/>}
+                   {isDownloading ? 'Preparing...' : 'Download Report'}
+                 </button>
             </div>
             {/* Placeholder for charts */}
             <div className="h-64 bg-gray-100 rounded-md flex items-center justify-center">
@@ -248,6 +298,28 @@ const EventManagementPage: React.FC<EventManagementPageProps> = ({ event, guests
   const [activeTab, setActiveTab] = useState<'guests' | 'invitations' | 'reports'>('guests');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [contactToEdit, setContactToEdit] = useState<Contact | null>(null);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [loadingInvitations, setLoadingInvitations] = useState(false);
+  const [sendingInvites, setSendingInvites] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
+
+  const refreshInvitations = useCallback(async () => {
+    setLoadingInvitations(true);
+    try {
+      const data = await fetchInvitations(event.id);
+      setInvitations(data);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load invitations');
+    } finally {
+      setLoadingInvitations(false);
+    }
+  }, [event.id]);
+
+  useEffect(() => {
+    refreshInvitations();
+  }, [refreshInvitations]);
 
   const handleOpenModal = (contact: Contact | null) => {
       setContactToEdit(contact);
@@ -262,19 +334,73 @@ const EventManagementPage: React.FC<EventManagementPageProps> = ({ event, guests
       }
   };
 
-  const handleSendInvitations = () => {
-      toast.success('Invitations sent successfully!');
+  const handleSendInvitations = async (selectedContactIds: string[]) => {
+      if (selectedContactIds.length === 0) {
+        toast.error('Select at least one contact to send invitations.');
+        return;
+      }
+      setSendingInvites(true);
+      try {
+        const selected = contacts.filter(c => selectedContactIds.includes(c.id));
+        await createInvitations(event.id, selected.map(c => ({ email: c.email, name: c.name })));
+        await refreshInvitations();
+        toast.success('Invitations sent successfully!');
+      } catch (err: any) {
+        const message = err instanceof Error ? err.message : 'Failed to send invitations';
+        toast.error(message);
+      } finally {
+        setSendingInvites(false);
+      }
   };
   
-  const handleSendReminders = () => {
-      toast.success('Reminders sent to all pending guests!');
+  const handleSendReminders = async () => {
+      setSendingReminders(true);
+      try {
+        const targets = invitations.filter(inv => inv.status !== 'RESPONDED' && inv.status !== 'BOUNCED');
+        if (targets.length === 0) {
+          toast('No pending recipients for reminders.');
+          setSendingReminders(false);
+          return;
+        }
+        await Promise.all(targets.map(inv => sendReminder(inv.id).catch(err => {
+          console.error('Reminder failed for', inv.id, err);
+          throw err;
+        })));
+        await refreshInvitations();
+        toast.success(`Reminders sent to ${targets.length} recipients.`);
+      } catch (err: any) {
+        const message = err instanceof Error ? err.message : 'Failed to send reminders';
+        toast.error(message);
+      } finally {
+        setSendingReminders(false);
+      }
+  };
+
+  const handleDownloadReport = async () => {
+    setDownloadingReport(true);
+    try {
+      const report = await fetchEventReport(event.id);
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `event-${event.id}-report.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Report downloaded.');
+    } catch (err: any) {
+      const message = err instanceof Error ? err.message : 'Failed to download report';
+      toast.error(message);
+    } finally {
+      setDownloadingReport(false);
+    }
   };
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'guests': return <GuestListTab guests={guests} onSendReminders={handleSendReminders} />;
-      case 'invitations': return <InvitationsTab contacts={contacts} onSendInvitations={handleSendInvitations} onOpenModal={handleOpenModal} onDeleteContact={onDeleteContact} />;
-      case 'reports': return <ReportsTab />;
+      case 'guests': return <GuestListTab guests={guests} onSendReminders={handleSendReminders} isSendingReminders={sendingReminders || loadingInvitations} />;
+      case 'invitations': return <InvitationsTab contacts={contacts} invitations={invitations} onSendInvitations={handleSendInvitations} onOpenModal={handleOpenModal} onDeleteContact={onDeleteContact} isSendingInvitations={sendingInvites || loadingInvitations} />;
+      case 'reports': return <ReportsTab onDownloadReport={handleDownloadReport} isDownloading={downloadingReport} />;
       default: return null;
     }
   };
